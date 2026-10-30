@@ -1,0 +1,25 @@
+# Environment & Credentials (Never commit secrets)
+.env
+*.pem
+*service-account*.json
+credentials.json
+token.json
+
+# Local SQLite Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Python Bytecode & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
