@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PulseOps — Daily Activity, Calendar & Password Hygiene AI Agent</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Header & Integration Status Bar -->
+    <header class="top-bar">
+      <div class="brand-group">
+        <div class="brand-logo" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">PulseOps Daily Activity Agent</h1>
+          <p class="brand-subtitle">Timesheet Webhook Dispatcher • Day-Start Google Calendar Sync • Zero-Knowledge Password Rotation</p>
+        </div>
+      </div>
+
+      <div class="top-controls">
+        <label class="date-picker-label" for="activeDateInput">
+          <span>Active Date</span>
+          <input type="date" id="activeDateInput" class="date-input" />
+        </label>
+
+        <div class="integration-pills" id="integrationPills">
+          <span class="status-pill" id="pillGcal" title="Google Calendar API status">
+            <span class="dot"></span> Google Calendar
+          </span>
+          <span class="status-pill" id="pillWebhook" title="External Timesheet Webhook">
+            <span class="dot"></span> Timesheet Webhook
+          </span>
+          <span class="status-pill" id="pillGemini" title="Gemini 3.8 Flash Agent">
+            <span class="dot"></span> Gemini 3.8 Flash
+          </span>
+        </div>
+
+        <button type="button" class="btn btn-secondary" id="btnOpenLogs" title="View Integration & Webhook Audit Logs">
+          API Logs
+        </button>
+        <button type="button" class="btn btn-primary" id="btnOpenSettings">
+          Integrations &amp; API Keys
+        </button>
+      </div>
+    </header>
+
+    <!-- KPI Metrics Strip -->
+    <section class="kpi-strip" aria-label="Daily Metrics Overview">
+      <article class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">Daily Timesheet Progress</span>
+          <span class="badge" id="kpiTimesheetStatusBadge">Draft</span>
+        </div>
+        <div class="kpi-value-row">
+          <strong class="kpi-value" id="kpiHoursValue">0.0h / 8.0h</strong>
+          <span class="kpi-subtext" id="kpiBillableText">0.0h billable</span>
+        </div>
+        <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="kpiHoursProgressTrack">
+          <div class="progress-fill" id="kpiHoursProgressFill" style="width: 0%"></div>
+        </div>
+      </article>
+
+      <article class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">Day-Start Calendar Schedule</span>
+          <span class="badge badge-info" id="kpiCalendarSyncBadge">Google Calendar</span>
+        </div>
+        <div class="kpi-value-row">
+          <strong class="kpi-value" id="kpiActionsCount">0 Actions</strong>
+          <span class="kpi-subtext" id="kpiActionsCompleted">0 completed today</span>
+        </div>
+        <div class="kpi-actions-inline">
+          <button type="button" class="btn-link" id="btnSyncCalendarQuick">Sync with Google Calendar</button>
+          <span>•</span>
+          <a href="/api/actions/calendar.ics" class="btn-link" id="linkDownloadIcs" download>Download .ICS</a>
+        </div>
+      </article>
+
+      <article class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">Zero-Knowledge Password Hygiene</span>
+          <span class="badge badge-warning" id="kpiPasswordAlertBadge">Checking...</span>
+        </div>
+        <div class="kpi-value-row">
+          <strong class="kpi-value" id="kpiOverdueCount">0 Overdue</strong>
+          <span class="kpi-subtext" id="kpiDueSoonCount">0 due within 10 days</span>
+        </div>
+        <p class="kpi-footnote">Metadata-only tracking • CSPRNG ephemeral password suggestions</p>
+      </article>
+    </section>
+
+    <!-- Main Workspace Grid -->
+    <main class="workspace-grid">
+      <!-- Left Column: Day-Start Actions & Google Calendar Schedule -->
+      <section class="panel" aria-labelledby="headingCalendar">
+        <div class="panel-header">
+          <div>
+            <h2 id="headingCalendar" class="panel-title">1. Day-Start Actions &amp; Calendar Schedule</h2>
+            <p class="panel-desc">Note morning actions &amp; time-block them directly into Google Calendar</p>
+          </div>
+          <button type="button" class="btn btn-sm btn-secondary" id="btnSyncCalendar">
+            Sync Google Calendar
+          </button>
+        </div>
+
+        <form id="formAddAction" class="compact-form">
+          <div class="form-row">
+            <input
+              type="text"
+              id="actionTitle"
+              name="title"
+              placeholder="Note a day-start action (e.g., Architecture Review & Sprint Planning)"
+              required
+              class="input-field flex-2"
+            />
+            <select id="actionCategory" name="category" class="input-field">
+              <option value="deep_work">Deep Work</option>
+              <option value="meeting">Meeting / Sync</option>
+              <option value="security">Security Hygiene</option>
+              <option value="admin">Admin / Timesheet</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="inline-label">
+              <span>Start</span>
+              <input type="time" id="actionStart" name="start_time" value="09:30" required class="input-field" />
+            </label>
+            <label class="inline-label">
+              <span>End</span>
+              <input type="time" id="actionEnd" name="end_time" value="10:30" required class="input-field" />
+            </label>
+            <select id="actionPriority" name="priority" class="input-field">
+              <option value="high">High Priority</option>
+              <option value="medium" selected>Medium Priority</option>
+              <option value="low">Low Priority</option>
+            </select>
+            <button type="submit" class="btn btn-primary">Add to Schedule</button>
+          </div>
+          <input
+            type="text"
+            id="actionDescription"
+            name="description"
+            placeholder="Optional agenda, Google Meet notes, or deliverable criteria..."
+            class="input-field"
+          />
+        </form>
+
+        <div class="timeline-list" id="calendarTimelineList" role="list">
+          <!-- Populated dynamically by app.js -->
+        </div>
+      </section>
+
+      <!-- Middle Column: Daily-Wise Timesheet Submission -->
+      <section class="panel" aria-labelledby="headingTimesheet">
+        <div class="panel-header">
+          <div>
+            <h2 id="headingTimesheet" class="panel-title">2. Daily-Wise Timesheet &amp; Webhook</h2>
+            <p class="panel-desc">Track task hours &amp; dispatch EOD timesheet payload to external webhook/API</p>
+          </div>
+          <div class="btn-group">
+            <a href="/api/timesheets/export.csv" id="linkExportCsv" class="btn btn-sm btn-secondary" download>CSV</a>
+            <button type="button" class="btn btn-sm btn-accent" id="btnSubmitTimesheet">
+              Submit Day's Timesheet
+            </button>
+          </div>
+        </div>
+
+        <form id="formAddTimesheet" class="compact-form">
+          <div class="form-row">
+            <input
+              type="text"
+              id="tsProject"
+              name="project"
+              placeholder="Project / Client (e.g., Core Platform API)"
+              required
+              class="input-field flex-2"
+            />
+            <input
+              type="text"
+              id="tsTicket"
+              name="ticket_id"
+              placeholder="Ticket (e.g. PLAT-408)"
+              class="input-field"
+            />
+          </div>
+          <div class="form-row">
+            <input
+              type="text"
+              id="tsDescription"
+              name="task_description"
+              placeholder="What did you accomplish?"
+              required
+              class="input-field flex-2"
+            />
+            <input
+              type="number"
+              id="tsHours"
+              name="hours"
+              step="0.25"
+              min="0.25"
+              max="24"
+              value="1.5"
+              required
+              class="input-field input-hours"
+              title="Hours spent"
+            />
+            <label class="checkbox-label">
+              <input type="checkbox" id="tsBillable" name="billable" checked />
+              <span>Billable</span>
+            </label>
+            <button type="submit" class="btn btn-primary">Log Hours</button>
+          </div>
+        </form>
+
+        <div class="entries-list" id="timesheetEntriesList" role="list">
+          <!-- Populated dynamically by app.js -->
+        </div>
+      </section>
+
+      <!-- Right Column: Zero-Knowledge Password Rotation & Suggestions -->
+      <section class="panel" aria-labelledby="headingPasswords">
+        <div class="panel-header">
+          <div>
+            <h2 id="headingPasswords" class="panel-title">3. Password Rotation &amp; Suggestions</h2>
+            <p class="panel-desc">Zero-knowledge metadata tracker &amp; CSPRNG replacement generator</p>
+          </div>
+          <button type="button" class="btn btn-sm btn-secondary" id="btnQuickGenerator">
+            Password Studio
+          </button>
+        </div>
+
+        <form id="formAddPasswordAccount" class="compact-form">
+          <div class="form-row">
+            <input
+              type="text"
+              id="pwServiceName"
+              name="service_name"
+              placeholder="Service (e.g., Cloudflare Production)"
+              required
+              class="input-field flex-2"
+            />
+            <input
+              type="text"
+              id="pwIdentifier"
+              name="account_identifier"
+              placeholder="Account / Username"
+              required
+              class="input-field"
+            />
+          </div>
+          <div class="form-row">
+            <label class="inline-label" title="Rotation interval in days">
+              <span>Every (days)</span>
+              <input type="number" id="pwInterval" name="rotation_interval_days" value="90" min="7" max="365" class="input-field input-sm" />
+            </label>
+            <label class="inline-label" title="Date password was last rotated">
+              <span>Last Changed</span>
+              <input type="date" id="pwLastChanged" name="last_changed_date" class="input-field" />
+            </label>
+            <label class="inline-label" title="Minimum password length">
+              <span>Min Len</span>
+              <input type="number" id="pwMinLen" name="min_length" value="24" min="14" max="64" class="input-field input-sm" />
+            </label>
+            <button type="submit" class="btn btn-primary">Track Service</button>
+          </div>
+        </form>
+
+        <div class="password-list" id="passwordAccountsList" role="list">
+          <!-- Populated dynamically by app.js -->
+        </div>
+      </section>
+
+      <!-- Fourth Column: Conversational AI Agent Copilot -->
+      <aside class="panel agent-panel" aria-labelledby="headingAgent">
+        <div class="panel-header">
+          <div>
+            <h2 id="headingAgent" class="panel-title">AI Agent Copilot</h2>
+            <p class="panel-desc" id="agentModelLabel">Gemini 3.8 Flash Interactions API + Function Tools</p>
+          </div>
+          <button type="button" class="btn btn-sm btn-secondary" id="btnResetAgentChat" title="Start fresh conversation">
+            Reset
+          </button>
+        </div>
+
+        <div class="prompt-chips" aria-label="Quick Agent Commands">
+          <button type="button" class="chip" data-prompt="Give me my daily briefing for today.">
+            Daily Briefing
+          </button>
+          <button type="button" class="chip" data-prompt="Schedule a high priority action from 14:00 to 15:00 for Production API Security Audit">
+            + Schedule 14:00 Action
+          </button>
+          <button type="button" class="chip" data-prompt="Log 2.5 hours on Core Platform API for Google Calendar & Webhook integration (PLAT-412)">
+            + Log 2.5h Timesheet
+          </button>
+          <button type="button" class="chip" data-prompt="Check overdue passwords and suggest a strong password for AWS Production Console">
+            Suggest AWS Password
+          </button>
+          <button type="button" class="chip" data-prompt="Submit today's timesheet to the external webhook">
+            Submit Timesheet
+          </button>
+        </div>
+
+        <div class="chat-messages" id="agentChatMessages" aria-live="polite">
+          <!-- Populated dynamically -->
+        </div>
+
+        <form id="formAgentChat" class="chat-input-bar">
+          <input
+            type="text"
+            id="agentChatInput"
+            placeholder="Ask the agent to log hours, schedule day-start actions, or suggest passwords..."
+            required
+            autocomplete="off"
+            class="input-field"
+          />
+          <button type="submit" class="btn btn-primary" id="btnSendChat">Send</button>
+        </form>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Native HTML <dialog> Modal: Password Suggestion Studio -->
+  <dialog id="dialogPasswordStudio" class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" id="pwStudioTitle">CSPRNG Strong Password Suggestions</h3>
+          <p class="modal-subtitle">Zero-knowledge ephemeral generation — never saved to disk or database</p>
+        </div>
+        <button type="button" class="btn-icon" id="btnClosePwStudio" aria-label="Close modal">&times;</button>
+      </div>
+
+      <div class="pw-controls-bar">
+        <label class="inline-label">
+          <span>Length</span>
+          <input type="number" id="studioLength" value="24" min="14" max="64" class="input-field input-sm" />
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="studioSymbols" checked />
+          <span>Include Symbols (!@#$%^&amp;*)</span>
+        </label>
+        <button type="button" class="btn btn-sm btn-secondary" id="btnRegeneratePasswords">
+          Regenerate Candidates
+        </button>
+      </div>
+
+      <div id="pwSuggestionsContainer" class="pw-suggestions-grid">
+        <!-- Populated dynamically -->
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btnClosePwStudioBottom">Close</button>
+        <button type="button" class="btn btn-accent" id="btnMarkAccountRotated" hidden>
+          Confirm Password Updated &amp; Reset 90-Day Timer
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Native HTML <dialog> Modal: Integration & API Configuration -->
+  <dialog id="dialogSettings" class="modal-dialog">
+    <form id="formSettings" class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">External Integrations &amp; Webhook Settings</h3>
+          <p class="modal-subtitle">Configure Google Calendar API v3 and External Timesheet Webhook endpoints</p>
+        </div>
+        <button type="button" class="btn-icon" id="btnCloseSettings" aria-label="Close settings">&times;</button>
+      </div>
+
+      <div class="settings-grid">
+        <fieldset class="settings-group">
+          <legend>Google Calendar API v3 Integration</legend>
+          <label class="stack-label">
+            <span>Calendar ID (e.g., <code>primary</code> or team calendar email)</span>
+            <input type="text" id="setGcalId" name="google_calendar_id" class="input-field" />
+          </label>
+          <label class="stack-label">
+            <span>Google OAuth2 Access Token (Bearer Token with <code>calendar.events</code> scope)</span>
+            <input
+              type="password"
+              id="setGcalToken"
+              name="google_calendar_access_token"
+              placeholder="ya29.a0AfH6SM... (leave blank to use 1-click Google Calendar web links)"
+              class="input-field"
+            />
+          </label>
+          <label class="stack-label">
+            <span>Or Google Service Account JSON File Path</span>
+            <input
+              type="text"
+              id="setGcalSaPath"
+              name="google_service_account_path"
+              placeholder="C:/path/to/service-account.json"
+              class="input-field"
+            />
+          </label>
+          <label class="stack-label">
+            <span>Calendar Timezone (IANA format)</span>
+            <input type="text" id="setTimezone" name="timezone" value="Asia/Kolkata" class="input-field" />
+          </label>
+        </fieldset>
+
+        <fieldset class="settings-group">
+          <legend>External Timesheet Webhook / REST API</legend>
+          <label class="stack-label">
+            <span>Timesheet Webhook Endpoint URL (POST JSON payload)</span>
+            <input
+              type="url"
+              id="setWebhookUrl"
+              name="timesheet_webhook_url"
+              placeholder="https://httpbin.org/post"
+              required
+              class="input-field"
+            />
+          </label>
+          <label class="stack-label">
+            <span>Webhook Bearer API Key / HMAC Signing Secret (Optional)</span>
+            <input
+              type="password"
+              id="setWebhookKey"
+              name="timesheet_api_key"
+              placeholder="Bearer token & HMAC-SHA256 secret"
+              class="input-field"
+            />
+          </label>
+          <div class="form-row">
+            <label class="stack-label flex-1">
+              <span>Employee / Contractor ID</span>
+              <input type="text" id="setEmployeeId" name="timesheet_employee_id" class="input-field" />
+            </label>
+            <label class="stack-label flex-1">
+              <span>Daily Target Hours</span>
+              <input type="number" step="0.5" id="setTargetHours" name="daily_target_hours" class="input-field" />
+            </label>
+          </div>
+        </fieldset>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btnCancelSettings">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Integration Settings</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Native HTML <dialog> Modal: API & Webhook Audit Logs -->
+  <dialog id="dialogLogs" class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">Integration &amp; Webhook Delivery Audit Logs</h3>
+          <p class="modal-subtitle">Recent Google Calendar API sync calls and Timesheet Webhook deliveries</p>
+        </div>
+        <button type="button" class="btn-icon" id="btnCloseLogs" aria-label="Close logs">&times;</button>
+      </div>
+      <div id="integrationLogsContainer" class="logs-list">
+        <!-- Populated dynamically -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btnCloseLogsBottom">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Toast Notification -->
+  <div id="toastBanner" class="toast-banner" role="status" aria-live="polite" hidden></div>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
